@@ -21,6 +21,11 @@ LINE_CHANNEL_ACCESS_TOKEN = "hp3IwT8gL4CBWiQJ+WcVEb1QYl0Vr7tmjMY5nF7SPMncnBsjkSL
 LINE_CHANNEL_SECRET = "f5bc15280dc66b140df20b085805d9e9"
 OPENAI_API_KEY = "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"
 
+@app.route("/", methods=['GET'])
+def home():
+    return "LINE Bot is running!"
+
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -41,6 +46,7 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     msg = event.message.text
+    print(msg)
     if msg=="生活相關問題":
         TextSendMessage(text="123")
     else:
@@ -56,6 +62,7 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
 
 
