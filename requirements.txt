@@ -17,7 +17,6 @@ openai
 gunicorn
 
 
-app = Flask(__name__)
 
 system_prompt = """
 你是一個客服助理，你的名字是小智。
