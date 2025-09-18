@@ -6,7 +6,7 @@ from linebot.models import MessageEvent, TextMessage,TemplateSendMessage,Message
 from openai import OpenAI
 
 app = Flask(__name__)
-
+print("test")
 system_prompt = """
 你是一個客服助理，你的名字是小智。
 你可以回答以下問題：
@@ -56,5 +56,6 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
 
