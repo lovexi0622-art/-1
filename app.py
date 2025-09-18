@@ -42,7 +42,7 @@ def callback():
 def handle_message(event):
     msg = event.message.text
     if msg=="生活相關問題":
-        pass
+        TextSendMessage(text="123")
     else:
         resp = client.responses.create(
             model="gpt-4o-mini",        
@@ -56,3 +56,4 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(port=5000)
+
