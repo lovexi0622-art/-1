@@ -48,7 +48,10 @@ def handle_message(event):
     msg = event.message.text
     print(msg)
     if msg=="生活相關問題":
-        TextSendMessage(text="123")
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=msg)
+        )
     else:
         resp = client.responses.create(
             model="gpt-4o-mini",        
@@ -62,6 +65,7 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
 
 
 
