@@ -1,9 +1,11 @@
 # app.py
-from flask import Flask, request, abort
-from linebot import LineBotApi, WebhookHandler
+flask
+gunicorn
+requests==2.31.0
+pip install flask line-bot-sdk
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage,TemplateSendMessage,MessageAction,CarouselColumn,CarouselTemplate,TextSendMessage
-from openai import OpenAI
+pip install --upgrade openai
 
 app = Flask(__name__)
 
