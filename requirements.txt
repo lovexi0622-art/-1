@@ -7,9 +7,15 @@ flask
 line-bot-sdk
 gunicorn
 
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage,TemplateSendMessage,MessageAction,CarouselColumn,CarouselTemplate,TextSendMessage
-pip install --upgrade openai
+flask
+line-bot-sdk
+gunicorn
+
+flask
+line-bot-sdk
+openai
+gunicorn
+
 
 app = Flask(__name__)
 
