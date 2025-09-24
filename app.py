@@ -15,7 +15,7 @@ language="繁體中文" #語言設定
 # 你的 LINE Bot Token
 LINE_CHANNEL_ACCESS_TOKEN = "hp3IwT8gL4CBWiQJ+WcVEb1QYl0Vr7tmjMY5nF7SPMncnBsjkSL8lkQvaeCXCP0ObM/jFDBI4QbStd7MRyHlJzgSpJtM0zfUHwmAX1jyKSzK6jqZYkHnGBygCR7wp6xfMjN0iqil1f2q6KslK+DxtQdB04t89/1O/w1cDnyilFU="
 LINE_CHANNEL_SECRET = "f5bc15280dc66b140df20b085805d9e9"
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") #GPT Token 
 
 client = OpenAI(api_key=OPENAI_API_KEY) #初始化GPT
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN) #初始化Line bot
@@ -169,6 +169,7 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(port=5000)
+
 
 
 
