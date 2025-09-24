@@ -4,3 +4,4 @@ numpy
 openai
 gunicorn
 requests==2.31.0
+faiss-cpu
