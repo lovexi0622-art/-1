@@ -143,7 +143,6 @@ def handle_message(event):
 
     else:
 
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="GPT 正在思考中…")) # 讓使用者覺得不會等太久，但會有兩個訊息
         retrieved = query(msg, k=5, threshold=0.4)  # 只取相似度大於 0.4 的片段
 
         if retrieved:  # 如果有找到足夠相似的片段
@@ -169,6 +168,7 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(port=5000)
+
 
 
 
