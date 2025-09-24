@@ -15,7 +15,7 @@ language="繁體中文" #語言設定
 # 你的 LINE Bot Token
 LINE_CHANNEL_ACCESS_TOKEN = "hp3IwT8gL4CBWiQJ+WcVEb1QYl0Vr7tmjMY5nF7SPMncnBsjkSL8lkQvaeCXCP0ObM/jFDBI4QbStd7MRyHlJzgSpJtM0zfUHwmAX1jyKSzK6jqZYkHnGBygCR7wp6xfMjN0iqil1f2q6KslK+DxtQdB04t89/1O/w1cDnyilFU="
 LINE_CHANNEL_SECRET = "f5bc15280dc66b140df20b085805d9e9"
-OPENAI_API_KEY = "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" #GPT Token
+OPENAI_API_KEY = "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" #GPT Token
 
 client = OpenAI(api_key=OPENAI_API_KEY) #初始化GPT
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN) #初始化Line bot
@@ -169,3 +169,4 @@ def handle_message(event):
     
 if __name__ == "__main__":
     app.run(port=5000)
+
