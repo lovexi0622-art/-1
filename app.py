@@ -7,6 +7,7 @@ from openai import OpenAI
 import numpy as np
 import faiss,os
 import re
+import time
 
 app = Flask(__name__)
 
@@ -15,7 +16,7 @@ language="繁體中文" #語言設定
 # 你的 LINE Bot Token
 LINE_CHANNEL_ACCESS_TOKEN = "hp3IwT8gL4CBWiQJ+WcVEb1QYl0Vr7tmjMY5nF7SPMncnBsjkSL8lkQvaeCXCP0ObM/jFDBI4QbStd7MRyHlJzgSpJtM0zfUHwmAX1jyKSzK6jqZYkHnGBygCR7wp6xfMjN0iqil1f2q6KslK+DxtQdB04t89/1O/w1cDnyilFU="
 LINE_CHANNEL_SECRET = "f5bc15280dc66b140df20b085805d9e9"
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") #GPT Token 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") #GPT Token
 
 client = OpenAI(api_key=OPENAI_API_KEY) #初始化GPT
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN) #初始化Line bot
@@ -143,11 +144,20 @@ def handle_message(event):
 
     else:
 
-        retrieved = query(msg, k=5, threshold=0.4)  # 只取相似度大於 0.4 的片段
+        try:
 
-        if retrieved:  # 如果有找到足夠相似的片段
+            line_bot_api.push_message(event.reply_token, TextSendMessage(text="GPT正在思考中..."))#如果line不擋就輸出"GPT正在思考中..."
+
+        except Exception:
+            pass
+
+        #只取5個相似度大於 0.4 的片段
+        retrieved = query(msg, k=5, threshold=0.4)  
+
+        #有FAQ資訊
+        if retrieved:  
             context = "\n\n---\n\n".join(
-                f"[來源: {r['meta']['chunk_index']}] {r['text']}" for r in retrieved
+                f"[來源: {r['meta']['chunk_index']}] {r['text']} [相似度: {r['score']}]" for r in retrieved
             )
             prompt = f"""你是一個元培機器人。請基於以下引用的文件片段回答使用者問題，若與學校相關且無相關資料請說「找不到相關資訊」。
             引用:
@@ -155,22 +165,36 @@ def handle_message(event):
 
             使用者問題: {msg}
             請用{language}簡短回答"""
-            print("回應:",context) #確認傳給GPT資料
+            print("回應:",context) #後台確認傳給GPT資料
 
-        else:  # 沒找到相似片段，就不用 context
+        #無FAQ資訊 GPT自己判斷怎麼回
+        else:  
             prompt = f"""你是一個元培機器人。請回答使用者問題，但如果與學校相關且無資料，請說「找不到相關資訊」。
             使用者問題: {msg}
             請用{language}簡短回答。"""
 
-        resp = client.responses.create(model="gpt-4o-mini", input=prompt) #GPT生成訊息  
-        line_bot_api.reply_message(event.source.user_id, TextSendMessage(text=resp.output_text)) #將GPT生成訊息回傳LINE使用者
-        print("回應:",retrieved)
+
+        gpt5_models = ["gpt-5-nano","gpt-4o-mini","gpt-5-mini"]  #GPT模型
+        resp = None
+
+        #依序執行GPT模型
+        for model_name in gpt5_models:
+            try:
+                resp = client.responses.create(model=model_name, input=prompt)
+                print("GPT型號:",model_name)
+                break
+            except Exception as e:
+                print(f"{model_name} 呼叫失敗: {e}")
+                time.sleep(0.1)
+                continue  #嘗試下一個模型
+
+
+        if resp is None:
+            # 所有模型都失敗，回傳預設訊息
+            print("目前無法取得回應，請稍後再試。")
+        else:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=resp.output_text)) # GPT回復
     
+
 if __name__ == "__main__":
     app.run(port=5000)
-
-
-
-
-
-
