@@ -164,11 +164,12 @@ def handle_message(event):
             請用{language}簡短回答。"""
 
         resp = client.responses.create(model="gpt-4o-mini", input=prompt) #GPT生成訊息  
-        line_bot_api.push_message(event.source.user_id, TextSendMessage(text=resp.output_text)) #將GPT生成訊息回傳LINE使用者
+        line_bot_api.reply_message(event.source.user_id, TextSendMessage(text=resp.output_text)) #將GPT生成訊息回傳LINE使用者
         print("回應:",retrieved)
     
 if __name__ == "__main__":
     app.run(port=5000)
+
 
 
 
