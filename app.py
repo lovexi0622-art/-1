@@ -2,32 +2,32 @@
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage,TemplateSendMessage,MessageAction,CarouselColumn,CarouselTemplate,TextSendMessage
+from linebot.models import MessageEvent, TextMessage,TemplateSendMessage,MessageAction,CarouselColumn,CarouselTemplate,TextSendMessage,FlexSendMessage
 from openai import OpenAI
 import numpy as np
-import faiss,os
-import re
-import time
+import faiss,os,re,time,random
 
 app = Flask(__name__)
 
 language="繁體中文" #語言設定
+gpt5_models = ["gpt-5-nano","gpt-4o-mini","gpt-5-mini"]  #GPT模型
+flex_color = [["#F9FAFB","#2563EB","#1F2937"],["#FFF8F0","#E07A5F","#374151"],["#ECFDF5","#10B981","#064E3B"]] # Flex顏色設定
 
 # 你的 LINE Bot Token
-LINE_CHANNEL_ACCESS_TOKEN = "hp3IwT8gL4CBWiQJ+WcVEb1QYl0Vr7tmjMY5nF7SPMncnBsjkSL8lkQvaeCXCP0ObM/jFDBI4QbStd7MRyHlJzgSpJtM0zfUHwmAX1jyKSzK6jqZYkHnGBygCR7wp6xfMjN0iqil1f2q6KslK+DxtQdB04t89/1O/w1cDnyilFU="
-LINE_CHANNEL_SECRET = "f5bc15280dc66b140df20b085805d9e9"
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") #GPT Token
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") #GPT API
 
 client = OpenAI(api_key=OPENAI_API_KEY) #初始化GPT
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN) #初始化Line bot
 handler = WebhookHandler(LINE_CHANNEL_SECRET) 
 
 
-#待定
+#將FAQ.TXT格式化，以\n為斷點並去編號
 def chunk_text(text):
-    # 只拆換行，不做長度切分，並移除前面的數字編號 (1. 2. 3. ...)
-    return [re.sub(r'^\d+\.\s*', '', p.strip()) for p in text.split("\n") if p.strip()]
-
+    # 將FAQ每行分好段落text.split("\n")。並用if p.strip()防呆，跳過空白行
+    # 將各行進一步加工^\d+\.\s* 刪除每行開頭(^)的多個數字(\d+)及小數點(\.)
+    return [re.sub(r'^\d+\.', '', p) for p in text.split("\n") if p.strip()]
 
 
 # --- 讀取本地 FAQ.txt
@@ -36,7 +36,7 @@ faq_path = os.path.join(BASE_DIR, "FAQ.txt")
 with open(faq_path, "r", encoding="utf-8") as f:
     faq_text = f.read()
 
-
+# --- 回應分段處理
 chunks = []
 metadata_list = []
 for i, chunk in enumerate(chunk_text(faq_text)):
@@ -44,7 +44,7 @@ for i, chunk in enumerate(chunk_text(faq_text)):
     metadata_list.append({"doc_id": "FAQ", "chunk_index": i+1})
 
 
-# --- 2) 叫 embedding API
+# ---  叫 embedding API
 embeddings = []
 batch_size = 16
 for i in range(0, len(chunks), batch_size):
@@ -54,7 +54,7 @@ for i in range(0, len(chunks), batch_size):
         embeddings.append(item.embedding)
 
 
-# --- 3) 建立 FAISS index
+# ---  建立 FAISS index
 emb_array = np.array(embeddings).astype("float32")
 faiss.normalize_L2(emb_array)
 dim = emb_array.shape[1]
@@ -67,6 +67,22 @@ id_to_meta = {i: metadata_list[i] for i in range(len(metadata_list))}
 id_to_text = {i: chunks[i] for i in range(len(chunks))}
 
 faiss.write_index(index, "knowledge.index")
+
+
+# LINE webhook 入口
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
+    return 'OK'
+
+###以上為程式初始化
 
 
 #使用者問題查詢
@@ -100,81 +116,55 @@ def query(q_text, k=5, threshold=0.4):
     return results
 
 
-# LINE webhook 入口
-@app.route("/callback", methods=['POST'])
-def callback():
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        abort(400)
-
-    return 'OK'
+def phone(text):
+    ph1=[]
+    ph1.append(re.search(r"03-\d{7}", text).group())
+    start = text.find(ph1[0])
+    left = text.rfind("•", 0, start)+1 # 往前找最近的分隔符 •
+    ph1.append(text[left:start-1])
+    return ph1
 
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    global language
+
+    #方便後續整理
+    global language #沒什麼用 全域變數宣告
+    timen={} #程式運行時間軸
+    start_time = time.time() #紀錄起始時間
     msg = event.message.text #方便後續管理
-    if msg == "語言":
-        carousel_template = TemplateSendMessage(
-            alt_text="這是旋轉木馬選單",
-            template=CarouselTemplate(
-                columns=[
-                    CarouselColumn(
-                        title="語言",
-                        text="請選擇使用語言",
-                        actions=[
-                            MessageAction(label="中文", text="繁體中文"),
-                            MessageAction(label="英文", text="英文")
-                        ]
-                    )
-                ]
-            )
-        )
-        line_bot_api.reply_message(event.reply_token, carousel_template)
 
-    elif msg == "繁體中文":
-        language="繁體中文"
 
-    elif msg == "英文":
-        language="英文"
-
-    else:
-
-        try:
-
-            line_bot_api.push_message(event.reply_token, TextSendMessage(text="GPT正在思考中..."))#如果line不擋就輸出"GPT正在思考中..."
-
-        except Exception:
-            pass
+    if msg:
 
         #只取5個相似度大於 0.4 的片段
         retrieved = query(msg, k=5, threshold=0.4)  
+        timen["問題比對"]= time.time() - start_time #時間紀錄
 
         #有FAQ資訊
-        if retrieved:  
-            context = "\n\n---\n\n".join(
-                f"[來源: {r['meta']['chunk_index']}] {r['text']} [相似度: {r['score']}]" for r in retrieved
-            )
-            prompt = f"""你是一個元培機器人。請基於以下引用的文件片段回答使用者問題，若與學校相關且無相關資料請說「找不到相關資訊」。
+        if retrieved:
+
+            context = "\n\n---\n\n".join(f"{r['text']} [相似度: {r['score']}]" for r in retrieved)
+
+            prompt = f"""你是一個元培機器人、代表元培醫事科技大學。請基於以下引用的文件片段回答使用者問題，若與學校相關且無相關資料請說「找不到相關資訊」。
             引用:
             {context}
 
             使用者問題: {msg}
-            請用{language}簡短回答"""
+            請用{language}以及最精準且簡短並以最快的速度回復。使用「•」作為前綴"""
+
+            
+            context = "\n---\n".join(f"[來源: {r['meta']['chunk_index']}] {r['text']} [相似度: {r['score']}]" for r in retrieved)
             print("回應:",context) #後台確認傳給GPT資料
 
         #無FAQ資訊 GPT自己判斷怎麼回
         else:  
-            prompt = f"""你是一個元培機器人。請回答使用者問題，但如果與學校相關且無資料，請說「找不到相關資訊」。
+            prompt = f"""你是一個元培機器人、代表元培醫事科技大學。請回答使用者問題，但如果與學校相關，請先引導讓使用知道怎麼問更加精準。若無法引導請回「找不到相關資訊」。
             使用者問題: {msg}
-            請用{language}簡短回答。"""
+            請用{language}以及最精準且簡短並以最快的速度回復。使用「•」作為前綴"""
 
 
-        gpt5_models = ["gpt-5-nano","gpt-4o-mini","gpt-5-mini"]  #GPT模型
+        timen["回答方式選擇"]= time.time() - start_time #時間紀錄
         resp = None
 
         #依序執行GPT模型
@@ -189,12 +179,117 @@ def handle_message(event):
                 continue  #嘗試下一個模型
 
 
+        timen["GPT回答"]= time.time() - start_time
         if resp is None:
-            # 所有模型都失敗，回傳預設訊息
-            print("目前無法取得回應，請稍後再試。")
-        else:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=resp.output_text)) # GPT回復
-    
 
+            # 所有模型都失敗，回傳預設訊息
+            print("GPT全故障，請檢查是否TPD OR API出問題")
+            line_bot_api.reply_message(event.reply_token, "目前無法取得回應，請稍後再試。")
+
+        else:
+
+            rdcolor=random.randint(0,2)
+
+            if resp.output_text.count("03-")==1 and "電話" in resp.output_text:
+
+                ph=phone(resp.output_text)
+                flex_message = FlexSendMessage(
+                    alt_text="元培資管機器人",
+                    contents={
+                        "type": "bubble",
+                        "body": {
+                            "type": "box",
+                            "layout": "vertical",
+                            "backgroundColor": flex_color[rdcolor][0],
+                            "contents": [
+                                {
+                                    "type": "text",
+                                    "text": "元培資管機器人",
+                                    "weight": "bold",
+                                    "size": "xl",
+                                    "align": "center",
+                                    "color": flex_color[rdcolor][1]
+                                },
+                                {
+                                        "type": "separator",
+                                        "margin": "md",
+                                },
+                                {
+                                    "type": "text",
+                                    "text": resp.output_text,
+                                    "wrap": True,
+                                    "size": "sm",
+                                    "align": "start",
+                                    "color": flex_color[rdcolor][2],
+                                    "margin": "md"
+                                }
+                            ]
+                        },"footer": {
+                            "type": "box",
+                            "layout": "vertical",
+                            "spacing": "sm",
+                            "backgroundColor": flex_color[rdcolor][0],
+                            "contents": [
+                                {
+                                    "type": "button",
+                                    "style": "link",
+                                    "action": {
+                                        "type": "uri",
+                                        "label": f"📞 聯絡{ph[1]}",
+                                        "uri": f"tel://{ph[0]}"
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                )
+
+            else:
+
+                flex_message = FlexSendMessage(
+                    alt_text="元培資管機器人",
+                    contents={
+                        "type": "bubble",
+                        "body": {
+                                    "type": "box",
+                                    "layout": "vertical",
+                                    "backgroundColor":flex_color[rdcolor][0] ,
+                                    "contents": [
+                                {
+                                    "type": "text",
+                                    "text": "元培資管機器人",
+                                    "weight": "bold",
+                                    "size": "xl",
+                                    "align": "center",
+                                    "color": flex_color[rdcolor][1]  
+                                },
+                                {
+                                    "type": "separator",
+                                    "margin": "md",
+                                    "color": "#000000"
+                                },
+                                {
+                                    "type": "text",
+                                    "text": resp.output_text,
+                                    "wrap": True,
+                                    "size": "sm",
+                                    "align": "start",
+                                    "color": flex_color[rdcolor][2],
+                                    "margin": "md"
+                                }
+                            ]
+                        }
+                    }
+                )
+
+            line_bot_api.reply_message(event.reply_token, flex_message)
+
+            #後台運行速度紀錄
+            timen["LINE機器人回復"]= time.time() - start_time
+            for i in timen.keys():
+                print(i,":",timen[i],end=" ")
+            print("")
+
+    
 if __name__ == "__main__":
     app.run(port=5000)
