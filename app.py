@@ -1,4 +1,3 @@
-# app.py
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -20,13 +19,15 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") #GPT API
 
 client = OpenAI(api_key=OPENAI_API_KEY) #初始化GPT
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN) #初始化Line bot
-handler = WebhookHandler(LINE_CHANNEL_SECRET) 
+handler = WebhookHandler(LINE_CHANNEL_SECRET) #Line驗證金鑰
 
 
 #將FAQ.TXT格式化，以\n為斷點並去編號
 def chunk_text(text):
-    # 將FAQ每行分好段落text.split("\n")。並用if p.strip()防呆，跳過空白行
-    # 將各行進一步加工^\d+\.\s* 刪除每行開頭(^)的多個數字(\d+)及小數點(\.)
+    '''
+    將FAQ每行分好段落text.split("\n")。並用if p.strip()防呆，跳過空白行
+    將各行進一步加工^\d+\.\s* 刪除每行開頭(^)的多個數字(\d+)及小數點(\.)
+    '''
     return [re.sub(r'^\d+\.', '', p) for p in text.split("\n") if p.strip()]
 
 
@@ -35,6 +36,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 faq_path = os.path.join(BASE_DIR, "FAQ.txt")
 with open(faq_path, "r", encoding="utf-8") as f:
     faq_text = f.read()
+
 
 # --- 回應分段處理
 chunks = []
@@ -63,10 +65,8 @@ index.add(emb_array)
 
 
 # 對照表
-id_to_meta = {i: metadata_list[i] for i in range(len(metadata_list))}
-id_to_text = {i: chunks[i] for i in range(len(chunks))}
-
-faiss.write_index(index, "knowledge.index")
+id_to_meta = {i: metadata_list[i] for i in range(len(metadata_list))} #來源
+id_to_text = {i: chunks[i] for i in range(len(chunks))} #內容
 
 
 # LINE webhook 入口
@@ -74,15 +74,13 @@ faiss.write_index(index, "knowledge.index")
 def callback():
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
-
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
-
     return 'OK'
 
-###以上為程式初始化
+# 以上初始化程式
 
 
 #使用者問題查詢
@@ -116,6 +114,7 @@ def query(q_text, k=5, threshold=0.4):
     return results
 
 
+# 確認訊息是否是電話相關訊息
 def phone(text):
     ph1=[]
     ph1.append(re.search(r"03-\d{7}", text).group())
@@ -125,13 +124,14 @@ def phone(text):
     return ph1
 
 
+# 訊息事件處理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
 
     #方便後續整理
     global language #沒什麼用 全域變數宣告
-    timen={} #程式運行時間軸
-    start_time = time.time() #紀錄起始時間
+    timen={} #程式運行時間軸 debug用的
+    start_time = time.time() #紀錄起始時間 debug用的
     msg = event.message.text #方便後續管理
 
 
@@ -139,12 +139,12 @@ def handle_message(event):
 
         #只取5個相似度大於 0.4 的片段
         retrieved = query(msg, k=5, threshold=0.4)  
-        timen["問題比對"]= time.time() - start_time #時間紀錄
+        timen["問題比對"]= time.time() - start_time #時間紀錄 debug用的
 
-        #有FAQ資訊
-        if retrieved:
+        # 確認給GPT的回應的格式
+        if retrieved: #有FAQ資訊
 
-            context = "\n\n---\n\n".join(f"{r['text']} [相似度: {r['score']}]" for r in retrieved)
+            context = "\n\n---\n\n".join(f"{r['text']}" for r in retrieved)
 
             prompt = f"""你是一個元培機器人、代表元培醫事科技大學。請基於以下引用的文件片段回答使用者問題，若與學校相關且無相關資料請說「找不到相關資訊」。
             引用:
@@ -154,11 +154,10 @@ def handle_message(event):
             請用{language}以及最精準且簡短並以最快的速度回復。使用「•」作為前綴"""
 
             
-            context = "\n---\n".join(f"[來源: {r['meta']['chunk_index']}] {r['text']} [相似度: {r['score']}]" for r in retrieved)
-            print("回應:",context) #後台確認傳給GPT資料
+            test = "\n---\n".join(f"[來源: {r['meta']['chunk_index']}] {r['text']} [相似度: {r['score']}]" for r in retrieved)
+            print("回應:",test) #後台確認傳給GPT資料 debug用的
 
-        #無FAQ資訊 GPT自己判斷怎麼回
-        else:  
+        else: #無FAQ資訊 GPT自己判斷怎麼回
             prompt = f"""你是一個元培機器人、代表元培醫事科技大學。請回答使用者問題，但如果與學校相關，請先引導讓使用知道怎麼問更加精準。若無法引導請回「找不到相關資訊」。
             使用者問題: {msg}
             請用{language}以及最精準且簡短並以最快的速度回復。使用「•」作為前綴"""
@@ -170,7 +169,7 @@ def handle_message(event):
         #依序執行GPT模型
         for model_name in gpt5_models:
             try:
-                resp = client.responses.create(model=model_name, input=prompt)
+                resp = client.responses.create(model=model_name, input=prompt) # 呼叫GPT
                 print("GPT型號:",model_name)
                 break
             except Exception as e:
@@ -188,9 +187,9 @@ def handle_message(event):
 
         else:
 
-            rdcolor=random.randint(0,2)
+            rdcolor=random.randint(0,2) # 隨機色系
 
-            if resp.output_text.count("03-")==1 and "電話" in resp.output_text:
+            if resp.output_text.count("03-")==1 and "電話" in resp.output_text: # 確認是否需要出現電話的按鈕
 
                 ph=phone(resp.output_text)
                 flex_message = FlexSendMessage(
@@ -282,7 +281,7 @@ def handle_message(event):
                     }
                 )
 
-            line_bot_api.reply_message(event.reply_token, flex_message)
+            line_bot_api.reply_message(event.reply_token, flex_message) # 將訊息回傳
 
             #後台運行速度紀錄
             timen["LINE機器人回復"]= time.time() - start_time
@@ -290,6 +289,6 @@ def handle_message(event):
                 print(i,":",timen[i],end=" ")
             print("")
 
-    
+# 讓程式在通訊埠5000運行
 if __name__ == "__main__":
     app.run(port=5000)
